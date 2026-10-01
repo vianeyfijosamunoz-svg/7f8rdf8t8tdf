@@ -79,7 +79,6 @@ local function SetDevice(use_old)
         Desktop = "MouseKeyboard",
         Mobile = "Touch",
         Console = "Gamepad",
-        VR = "VR",
         PC = "MouseKeyboard",
         Controller = "Gamepad",
     }
@@ -116,7 +115,7 @@ local function DeviceSpam()
     device_cancel += 1
     local token = device_cancel
     task.spawn(function()
-        local list = {"Desktop","Mobile","Console","VR"}
+        local list = {"Desktop","Mobile","Console"}
         while states.spoofer_state.device_spam and token == device_cancel do
             states.spoofer_state.device = list[math.random(1, #list)]
             SetDevice(false)
@@ -183,10 +182,6 @@ local CustomKillPhrases = {
     "APOCALYPSE V3 NO CONOCE RIVALES",
     "GG EZ, COMPRATE MANOS NUEVAS"
 }
-
-local meleStateTimer = 0
-local meleCurrentPhase = 1
-local lastMeleTarget = nil
 
 local soundConnections = {}
 local originalColors = {}
@@ -545,7 +540,7 @@ LeftMiscGroup:AddToggle("SpoofDeviceToggle", {
     end
 })
 LeftMiscGroup:AddDropdown("DeviceSelectDropdown", {
-    Values = {"Desktop", "Mobile", "Console", "VR"}, Default = 1, Multi = false, Text = "Target Device",
+    Values = {"Desktop", "Mobile", "Console"}, Default = 1, Multi = false, Text = "Target Device",
     Callback = function(v)
         states.spoofer_state.old_device = states.spoofer_state.device
         states.spoofer_state.device = v
@@ -825,24 +820,12 @@ local function SendKillSayMessage()
     end
 end
 
-local function IsTargetVisible(targetChar)
-    local head = targetChar:FindFirstChild("Head")
-    if not head then return false end
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, Camera}
-    rayParams.IgnoreWater = true
-    local result = workspace:Raycast(Camera.CFrame.Position, (head.Position - Camera.CFrame.Position), rayParams)
-    if not result then return true end
-    return result.Instance:IsDescendantOf(targetChar)
-end
-
 local function GetAdvancedPredictedPosition(targetChar, baseFactor)
     local hrp = targetChar:FindFirstChild("HumanoidRootPart")
     if not hrp then return nil end
     local velocity = hrp.AssemblyLinearVelocity
     local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
-    local dynamicFactor = math.clamp(distance / 700, 0.12, 0.42) + baseFactor
+    local dynamicFactor = math.clamp(distance / 600, 0.15, 0.48) + baseFactor
     local predictedPos = hrp.Position + (velocity * dynamicFactor)
     return CFrame.new(predictedPos)
 end
@@ -1137,7 +1120,7 @@ RunService.RenderStepped:Connect(function()
         local bestPart = GetBestSilentTarget()
         if bestPart then
             local velocity = bestPart.AssemblyLinearVelocity
-            local prediction = velocity * 0.16
+            local prediction = velocity * 0.18
             activeTargetPos = bestPart.Position + prediction
             currentSilentTarget = bestPart
         else
@@ -1336,49 +1319,30 @@ RunService.RenderStepped:Connect(function(dt)
 
     if RagebotEnabled then
         RunInstantAutoShot()
-        local target = nil
-        if AutoPrioridadEnabled or PriorizedVoidAttacks then
-            local prioritized = GetPrioritizedTarget()
-            if prioritized then
-                target = prioritized
-                if CurrentPrioritizedPlayer ~= prioritized and (tick() - lastNotifyTime) > 1.5 then
-                    CurrentPrioritizedPlayer = prioritized
-                    lastNotifyTime = tick()
-                    Library:Notify("PRIORIZED TO " .. string.upper(prioritized.Name), 3)
-                end
-            else
-                target = GetClosestTargetPlayer()
-                CurrentPrioritizedPlayer = nil
-            end
-        else
-            target = GetClosestTargetPlayer()
-            CurrentPrioritizedPlayer = nil
-        end
+        local target = GetClosestTargetPlayer()
 
         local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if myRoot then
             if target and isTargetValid(target) and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                 local tChar = target.Character
                 local tHrp = tChar.HumanoidRootPart
-                local optimalHitbox = GetOptimalHitbox(tChar) or tHrp
-                local predictedCFrame = GetAdvancedPredictedPosition(tChar, 0.18) or tHrp.CFrame
+                local optimalHitbox = GetOptimalHitbox(tChar)
+                local predictedCFrame = GetAdvancedPredictedPosition(tChar, 0.22) or tHrp.CFrame
 
                 if RageMode == "GUN" then
-                    local offset = AntiKnifeEnabled and CFrame.new(1.2, 0, 0) or CFrame.new(0, 0, 1.05)
-                    ApplyFakePosition(myRoot, predictedCFrame * offset)
+                    -- TP a 2 studs detrás del enemigo + camera lock profesional + predicción
+                    local behindCFrame = predictedCFrame * CFrame.new(0, 0, 2)
+                    ApplyFakePosition(myRoot, behindCFrame)
                     Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
                 elseif RageMode == "MELE" then
-                    ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(0, 0, 0.85))
-                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
+                    -- TP a 0 studs + predicción + siempre mirando hacia atrás
+                    local backCFrame = predictedCFrame * CFrame.Angles(0, math.rad(180), 0)
+                    ApplyFakePosition(myRoot, backCFrame)
                 elseif RageMode == "KNIFE" then
-                    local lateral = math.sin(tickCount * 0.55) * 2.2
-                    ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(lateral, 0, 0.95))
-                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
+                    local lateral = math.sin(tickCount * 0.7) * 1.8
+                    ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(lateral, 0, 0.65))
                 end
             else
-                lastMeleTarget = nil
-                meleCurrentPhase = 1
-                meleStateTimer = tick()
                 local spamOffset = Vector3.new(math.random(-9000000, 9000000), math.random(1000, 9000000), math.random(-9000000, 9000000))
                 ApplyFakePosition(myRoot, CFrame.new(spamOffset))
             end
