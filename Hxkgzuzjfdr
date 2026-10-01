@@ -224,10 +224,6 @@ getgenv().CharTransparencyEnabled = false
 getgenv().CharTransparencyValue = 0.5
 getgenv().NoCollisionEnabled = false
 getgenv().RemoveAccessoriesEnabled = false
-getgenv().WalkSpeedEnabled = false
-getgenv().WalkSpeedValue = 16
-getgenv().JumpPowerEnabled = false
-getgenv().JumpPowerValue = 50
 getgenv().GravityEnabled = false
 getgenv().GravityValue = 196.2
 getgenv().InfiniteJumpEnabled = false
@@ -649,22 +645,6 @@ LeftCharGroup:AddToggle("RemoveAccessoriesToggle", {
     end
 })
 
-RightCharGroup:AddToggle("WalkSpeedToggle", {
-    Text = "WalkSpeed", Default = false,
-    Callback = function(v) getgenv().WalkSpeedEnabled = v end
-})
-RightCharGroup:AddSlider("WalkSpeedSlider", {
-    Text = "WalkSpeed Value", Default = 16, Min = 1, Max = 200, Rounding = 0,
-    Callback = function(v) getgenv().WalkSpeedValue = v end
-})
-RightCharGroup:AddToggle("JumpPowerToggle", {
-    Text = "JumpPower", Default = false,
-    Callback = function(v) getgenv().JumpPowerEnabled = v end
-})
-RightCharGroup:AddSlider("JumpPowerSlider", {
-    Text = "JumpPower Value", Default = 50, Min = 1, Max = 300, Rounding = 0,
-    Callback = function(v) getgenv().JumpPowerValue = v end
-})
 RightCharGroup:AddToggle("GravityToggle", {
     Text = "Custom Gravity", Default = false,
     Callback = function(v) getgenv().GravityEnabled = v end
@@ -862,17 +842,15 @@ local function GetAdvancedPredictedPosition(targetChar, baseFactor)
     if not hrp then return nil end
     local velocity = hrp.AssemblyLinearVelocity
     local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
-    local dynamicFactor = math.clamp(distance / 1000, 0.05, 0.3) + baseFactor
+    local dynamicFactor = math.clamp(distance / 700, 0.12, 0.42) + baseFactor
     local predictedPos = hrp.Position + (velocity * dynamicFactor)
     return CFrame.new(predictedPos)
 end
 
 local function GetOptimalHitbox(targetChar)
-    local humanoid = targetChar:FindFirstChildOfClass("Humanoid")
     local head = targetChar:FindFirstChild("Head")
     local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-    if not humanoid or not head or not hrp then return nil end
-    if humanoid.Health <= 35 then return head else return hrp end
+    return head or hrp
 end
 
 local FOVCircle = Drawing.new("Circle")
@@ -965,7 +943,10 @@ local function GetClosestTargetPlayer()
             local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if myRoot then
                 local dist = (myRoot.Position - plr.Character.HumanoidRootPart.Position).Magnitude
-                if dist < shortestDist then shortestDist = dist closest = plr end
+                if dist < shortestDist then
+                    shortestDist = dist
+                    closest = plr
+                end
             end
         end
     end
@@ -1027,11 +1008,9 @@ local function GetBestSilentTarget()
 end
 
 local function ApplyFakePosition(myRoot, targetCFrame)
-    local camOffset = Camera.CFrame.Position - myRoot.Position
-    local camRotation = Camera.CFrame - Camera.CFrame.Position
-    local jitterOffset = Vector3.new(math.random(-15, 15) / 10, math.random(0, 5) / 10, math.random(-15, 15) / 10)
-    myRoot.CFrame = targetCFrame + jitterOffset
-    Camera.CFrame = CFrame.new(myRoot.Position + camOffset) * camRotation
+    myRoot.CFrame = targetCFrame
+    myRoot.AssemblyLinearVelocity = Vector3.zero
+    myRoot.AssemblyAngularVelocity = Vector3.zero
 end
 
 local oldGetMouseLocation
@@ -1158,7 +1137,7 @@ RunService.RenderStepped:Connect(function()
         local bestPart = GetBestSilentTarget()
         if bestPart then
             local velocity = bestPart.AssemblyLinearVelocity
-            local prediction = velocity * 0.12
+            local prediction = velocity * 0.16
             activeTargetPos = bestPart.Position + prediction
             currentSilentTarget = bestPart
         else
@@ -1381,37 +1360,27 @@ RunService.RenderStepped:Connect(function(dt)
             if target and isTargetValid(target) and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                 local tChar = target.Character
                 local tHrp = tChar.HumanoidRootPart
-                if IsTargetVisible(tChar) then
-                    local optimalHitbox = GetOptimalHitbox(tChar) or tHrp
-                    local predictedCFrame = GetAdvancedPredictedPosition(tChar, 0.11) or tHrp.CFrame
+                local optimalHitbox = GetOptimalHitbox(tChar) or tHrp
+                local predictedCFrame = GetAdvancedPredictedPosition(tChar, 0.18) or tHrp.CFrame
 
-                    if RageMode == "GUN" then
-                        local desiredCFrame = AntiKnifeEnabled and (predictedCFrame * CFrame.new(2.5, 0, 0)) or (predictedCFrame * CFrame.new(0, 0, 2.5))
-                        ApplyFakePosition(myRoot, desiredCFrame)
-                        Camera.CFrame = CFrame.new(Camera.CFrame.Position, optimalHitbox.Position)
-                    elseif RageMode == "MELE" then
-                        if lastMeleTarget ~= target then lastMeleTarget = target meleCurrentPhase = 1 meleStateTimer = tick() end
-                        local elapsed = tick() - meleStateTimer
-                        if meleCurrentPhase == 1 then
-                            ApplyFakePosition(myRoot, predictedCFrame)
-                            if elapsed >= 1.5 then meleCurrentPhase = 2 meleStateTimer = tick() end
-                        elseif meleCurrentPhase == 2 then
-                            if elapsed < 0.10 then myRoot.CFrame = CFrame.new(500000, 500000, 500000) * CFrame.Angles(math.rad(tickCount * 50000), 0, 0)
-                            elseif elapsed < 0.20 then myRoot.CFrame = CFrame.new(750000, 750000, 750000) * CFrame.Angles(math.rad(tickCount * 50000), 0, 0)
-                            elseif elapsed < 0.30 then myRoot.CFrame = CFrame.new(1000000, 1000000, 1000000) * CFrame.Angles(math.rad(tickCount * 50000), 0, 0)
-                            else meleCurrentPhase = 1 meleStateTimer = tick() end
-                        end
-                    elseif RageMode == "KNIFE" then
-                        local lateralOffset = math.sin(tickCount * 5000000 * 0.01) * 3.5
-                        ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(lateralOffset, 0, 2))
-                    end
+                if RageMode == "GUN" then
+                    local offset = AntiKnifeEnabled and CFrame.new(1.2, 0, 0) or CFrame.new(0, 0, 1.05)
+                    ApplyFakePosition(myRoot, predictedCFrame * offset)
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
+                elseif RageMode == "MELE" then
+                    ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(0, 0, 0.85))
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
+                elseif RageMode == "KNIFE" then
+                    local lateral = math.sin(tickCount * 0.55) * 2.2
+                    ApplyFakePosition(myRoot, predictedCFrame * CFrame.new(lateral, 0, 0.95))
+                    Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
                 end
             else
                 lastMeleTarget = nil
                 meleCurrentPhase = 1
                 meleStateTimer = tick()
                 local spamOffset = Vector3.new(math.random(-9000000, 9000000), math.random(1000, 9000000), math.random(-9000000, 9000000))
-                ApplyFakePosition(myRoot, CFrame.new(spamOffset) * CFrame.Angles(math.rad(tickCount * 900000), 0, 0))
+                ApplyFakePosition(myRoot, CFrame.new(spamOffset))
             end
         end
     end
@@ -1453,15 +1422,6 @@ RunService.Heartbeat:Connect(function()
                 part.CanCollide = false
             end
         end
-    end
-
-    if getgenv().WalkSpeedEnabled then
-        hum.WalkSpeed = getgenv().WalkSpeedValue
-    end
-
-    if getgenv().JumpPowerEnabled then
-        hum.JumpPower = getgenv().JumpPowerValue
-        hum.UseJumpPower = true
     end
 
     if getgenv().GravityEnabled then
