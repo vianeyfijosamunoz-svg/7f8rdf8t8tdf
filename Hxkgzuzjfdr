@@ -140,7 +140,7 @@ local SilentFillFOV = false
 local SilentFOVTransparency = 0
 local SilentFOVRadius = 300
 local SilentFOVColor = Color3.fromRGB(255, 255, 255)
-local SilentAimPart = "Head"
+local SilentMaxDistance = 500
 local activeTargetPos = nil
 local currentSilentTarget = nil
 
@@ -161,15 +161,15 @@ local RageMode = "GUN"
 local KillSayEnabled = false
 local lastKillSayTick = 0
 local CustomKillPhrases = {
-    "APOCALYPSE HUB ON TOP 👑",
+    "APOCALYPSE HUB ON TOP ðŸ‘‘",
     "EZ FOR APOCALYPSE",
     "TOTAL DOMINATION // APOCALYPSE",
     "GET GOOD, GET APOCALYPSE",
-    "MÁS RAPIDO QUE TU SILENT AIM",
-    "DESTRUIDO POR APOCALYPSE HUB 💀",
+    "MÃS RAPIDO QUE TU SILENT AIM",
+    "DESTRUIDO POR APOCALYPSE HUB ðŸ’€",
     "NI CON 100 FPS ME GANAS",
     "LIMPIANDO EL SERVER FACILMENTE",
-    "LLORA MÁS FUERTE EN EL CHAT 🍼",
+    "LLORA MÃS FUERTE EN EL CHAT ðŸ¼",
     "NO HAY WALLCHECK QUE TE SALVE",
     "APOCALYPSE.LOL DOMINANDO ESTE JUEGO",
     "FUTURA LEYENDA DEL RAGEBOT",
@@ -177,8 +177,8 @@ local CustomKillPhrases = {
     "METETE A OTRA PARTIDA, AQUI NO SIRVES",
     "TU AIMBOT ES DE JUGUETE AL LADO MIO",
     "SIGUE INTENTANDO DARME HEADSHOT",
-    "EL REY DEL PREDICTION LLEGUÉ YO",
-    "10-0 Y SIN ESFUERZO, MUÉRETE",
+    "EL REY DEL PREDICTION LLEGUÃ‰ YO",
+    "10-0 Y SIN ESFUERZO, MUÃ‰RETE",
     "APOCALYPSE V3 NO CONOCE RIVALES",
     "GG EZ, COMPRATE MANOS NUEVAS"
 }
@@ -190,7 +190,6 @@ local AutoPrioridadEnabled = false
 local PriorizedVoidAttacks = false
 local PrioridadMode = "Value"
 local CurrentPrioritizedPlayer = nil
-local lastNotifyTime = 0
 
 local TriggerbotBetaEnabled = false
 local ForgotTimeVal = 0
@@ -322,6 +321,25 @@ getgenv().OutdoorAmbientBoostActive = false
 getgenv().FreezeTimeActive = false
 getgenv().FrozenClockVal = 12
 
+-- NUEVO: FunciÃ³n Minecraft Textures
+getgenv().MinecraftTexturesActive = false
+LeftVisualsGroup:AddToggle("MinecraftTexturesToggle", {
+    Text = "Minecraft Textures (Blocks)", Default = false,
+    Callback = function(v)
+        getgenv().MinecraftTexturesActive = v
+        for _, p in ipairs(workspace:GetDescendants()) do
+            if p:IsA("BasePart") and not p.Parent:FindFirstChild("Humanoid") then
+                if v then
+                    p.Material = Enum.Material.Slate
+                    p.Reflectance = 0
+                else
+                    p.Material = Enum.Material.Plastic
+                end
+            end
+        end
+    end
+})
+
 LeftVisualsGroup:AddToggle("FullbrightToggle", {Text = "Fullbright (No Darkness)", Default = false, Callback = function(v) getgenv().FullbrightActive = v end})
 LeftVisualsGroup:AddToggle("CustomClockToggle", {Text = "Custom Clock Time Enabled", Default = false, Callback = function(v) getgenv().CustomClockActive = v end})
 LeftVisualsGroup:AddSlider("ClockTimeSlider", {Text = "Clock Time (Hour)", Default = 14, Min = 0, Max = 24, Rounding = 1, Suffix = " hrs", Callback = function(v) getgenv().ClockTimeVal = v end})
@@ -385,7 +403,7 @@ LeftVisualsGroup:AddToggle("PlasticMaterialsToggle", {
     end
 })
 LeftVisualsGroup:AddToggle("CustomFOVCameraToggle", {Text = "Custom Camera FOV Enabled", Default = false, Callback = function(v) getgenv().CustomCamFOVActive = v end})
-LeftVisualsGroup:AddSlider("CameraFOVSlider", {Text = "Camera Field of View", Default = 70, Min = 40, Max = 120, Rounding = 0, Suffix = "°", Callback = function(v) getgenv().CamFOVVal = v end})
+LeftVisualsGroup:AddSlider("CameraFOVSlider", {Text = "Camera Field of View", Default = 70, Min = 40, Max = 120, Rounding = 0, Suffix = "Â°", Callback = function(v) getgenv().CamFOVVal = v end})
 LeftVisualsGroup:AddToggle("NoCameraShakeToggle", {Text = "Disable Camera Shaking", Default = false, Callback = function(v) getgenv().NoCamShakeActive = v end})
 LeftVisualsGroup:AddToggle("WaterTransparencyToggle", {
     Text = "Transparent Terrain Water", Default = false,
@@ -531,6 +549,22 @@ local LeftMiscGroup = Tabs.MISC:AddLeftGroupbox("Device Spoofer")
 local RightMiscGroup = Tabs.MISC:AddRightGroupbox("Server & Extra Tools")
 local SpinbotGroup = Tabs.MISC:AddLeftGroupbox("Spinbot & Movement")
 local AutoGroup = Tabs.MISC:AddRightGroupbox("Auto Features")
+
+-- NUEVO: BotÃ³n Unlock All en MISC
+RightMiscGroup:AddButton("Unlock All (Skins/Items)", function()
+    pcall(function()
+        if getgc then
+            for _, v in pairs(getgc(true)) do
+                if type(v) == "table" then
+                    if rawget(v, "Owned") then v.Owned = true end
+                    if rawget(v, "Unlocked") then v.Unlocked = true end
+                    if rawget(v, "IsOwned") then v.IsOwned = true end
+                end
+            end
+        end
+        Library:Notify("Â¡Unlock All aplicado correctamente!", 3)
+    end)
+end)
 
 LeftMiscGroup:AddToggle("SpoofDeviceToggle", {
     Text = "Enable Device Spoofing", Default = false,
@@ -820,22 +854,6 @@ local function SendKillSayMessage()
     end
 end
 
-local function GetAdvancedPredictedPosition(targetChar, baseFactor)
-    local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-    if not hrp then return nil end
-    local velocity = hrp.AssemblyLinearVelocity
-    local distance = (Camera.CFrame.Position - hrp.Position).Magnitude
-    local dynamicFactor = math.clamp(distance / 600, 0.15, 0.48) + baseFactor
-    local predictedPos = hrp.Position + (velocity * dynamicFactor)
-    return CFrame.new(predictedPos)
-end
-
-local function GetOptimalHitbox(targetChar)
-    local head = targetChar:FindFirstChild("Head")
-    local hrp = targetChar:FindFirstChild("HumanoidRootPart")
-    return head or hrp
-end
-
 local FOVCircle = Drawing.new("Circle")
 FOVCircle.Thickness = 1.5
 FOVCircle.NumSides = 64
@@ -936,80 +954,51 @@ local function GetClosestTargetPlayer()
     return closest
 end
 
-local function GetPrioritizedTarget()
-    local bestTarget = nil
-    local highestScore = -math.huge
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if isTargetValid(plr) and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
-            local hrp = plr.Character.HumanoidRootPart
-            local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            if not myRoot then continue end
-            local distance = (myRoot.Position - hrp.Position).Magnitude
-            local velocity = hrp.AssemblyLinearVelocity.Magnitude
-            local score = 0
-            if AutoPrioridadEnabled and velocity > 90 then score = score + velocity * 10 end
-            if PriorizedVoidAttacks and distance > 100000 then score = score + 999999 end
-            if score > highestScore then highestScore = score bestTarget = plr end
-        end
-    end
-    return bestTarget
-end
-
-local function GetBestSilentTarget()
-    local bestPart = nil
-    local shortestDist = math.huge
-    local center = Camera.ViewportSize / 2
-    local priorityParts = {"Head", "UpperTorso", "HumanoidRootPart", "Torso"}
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if isTargetValid(plr) and plr.Character then
-            local char = plr.Character
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if not hum or hum.Health <= 0 then continue end
-
-            for _, partName in ipairs(priorityParts) do
-                local part = char:FindFirstChild(partName)
-                if part then
-                    local pos, onScreen = Camera:WorldToViewportPoint(part.Position)
-                    if onScreen then
-                        local screenDist = (Vector2.new(pos.X, pos.Y) - center).Magnitude
-                        if screenDist <= SilentFOVRadius and screenDist < shortestDist then
-                            if SilentWallCheck then
-                                local valid = getValidHead(char)
-                                if not valid then continue end
-                            end
-                            shortestDist = screenDist
-                            bestPart = part
-                            break
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return bestPart
-end
-
 local function ApplyFakePosition(myRoot, targetCFrame)
     myRoot.CFrame = targetCFrame
     myRoot.AssemblyLinearVelocity = Vector3.zero
     myRoot.AssemblyAngularVelocity = Vector3.zero
 end
 
-local oldGetMouseLocation
-oldGetMouseLocation = hookfunction(UserInputService.GetMouseLocation, newcclosure(function(self)
-    if getgenv().SilentAimEnabled and activeTargetPos and not checkcaller() then
-        local pos, onScreen = Camera:WorldToViewportPoint(activeTargetPos)
-        if onScreen then
-            return Vector2.new(pos.X, pos.Y)
-        end
-    end
-    return oldGetMouseLocation(self)
-end))
-
 RunService.RenderStepped:Connect(function()
     UpdateFOV()
     SendKillSayMessage()
+
+    if not getgenv().SilentAimEnabled then 
+        activeTargetPos = nil
+    else
+        local bestHead = nil
+        local shortestDist = 9e9
+        local screenCenter = Camera.ViewportSize / 2
+
+        for _, plr in pairs(Players:GetPlayers()) do
+            local char = plr.Character
+            if char and isTargetValid(plr) then
+                local head = char:FindFirstChild("Head")
+                if head then
+                    local distFromMe = (head.Position - Camera.CFrame.Position).Magnitude
+                    local headPos, headOnScreen = Camera:WorldToViewportPoint(head.Position)
+                    local fovDist = (Vector2.new(headPos.X, headPos.Y) - screenCenter).Magnitude
+
+                    if headOnScreen and distFromMe <= SilentMaxDistance and fovDist <= SilentFOVRadius then
+                        if fovDist < shortestDist then
+                            if SilentWallCheck then
+                                local valid = getValidHead(char)
+                                if valid then 
+                                    shortestDist = fovDist
+                                    bestHead = valid 
+                                end
+                            else
+                                shortestDist = fovDist
+                                bestHead = head
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        activeTargetPos = bestHead and bestHead.Position or nil
+    end
 
     pcall(function()
         if getgenv().FullbrightActive then
@@ -1115,23 +1104,16 @@ RunService.RenderStepped:Connect(function()
         if enemyVisible and (KatanaFlashEnabled or EscudoEnabled) then ManipulationText = "MANIPULATED" else ManipulationText = "" end
     end
     ManipLabel.Text = ManipulationText
-
-    if getgenv().SilentAimEnabled then
-        local bestPart = GetBestSilentTarget()
-        if bestPart then
-            local velocity = bestPart.AssemblyLinearVelocity
-            local prediction = velocity * 0.18
-            activeTargetPos = bestPart.Position + prediction
-            currentSilentTarget = bestPart
-        else
-            activeTargetPos = nil
-            currentSilentTarget = nil
-        end
-    else
-        activeTargetPos = nil
-        currentSilentTarget = nil
-    end
 end)
+
+local oldIndex
+oldIndex = hookmetamethod(game, "__index", newcclosure(function(self, idx)
+    if getgenv().SilentAimEnabled and activeTargetPos and not checkcaller() and idx == "ViewportSize" and self == Camera then
+        local pos, on = Camera:WorldToViewportPoint(activeTargetPos)
+        if on then return Vector2.new(pos.X * 2, pos.Y * 2) end
+    end
+    return oldIndex(self, idx)
+end))
 
 local function toggleTableAttribute(attr, val)
     if getgc then
@@ -1216,6 +1198,7 @@ RightGroupbox:AddToggle("SilentShowFOVToggle", {Text = "SHOW FOV", Default = fal
 RightGroupbox:AddToggle("SilentFillFOVToggle", {Text = "FILL FOV", Default = false, Callback = function(Value) SilentFillFOV = Value UpdateFOV() end})
 RightGroupbox:AddSlider("SilentFOVTransparency", {Text = "TRANSPARENCY FOV", Default = 0, Min = 0, Max = 100, Rounding = 0, Suffix = "%", Callback = function(Value) SilentFOVTransparency = Value UpdateFOV() end})
 RightGroupbox:AddSlider("SilentFOVRadius", {Text = "FOV RADIUS", Default = 300, Min = 180, Max = 1000, Rounding = 0, Callback = function(Value) SilentFOVRadius = Value UpdateFOV() end})
+RightGroupbox:AddSlider("SilentMaxDistSlider", {Text = "MAX DISTANCE", Default = 500, Min = 100, Max = 2000, Rounding = 0, Suffix = " studs", Callback = function(Value) SilentMaxDistance = Value end})
 
 local RagebotGroupbox = Tabs.Main:AddRightGroupbox("Ragebot")
 RagebotGroupbox:AddToggle("RagebotToggle", {
@@ -1326,16 +1309,14 @@ RunService.RenderStepped:Connect(function(dt)
             if target and isTargetValid(target) and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                 local tChar = target.Character
                 local tHrp = tChar.HumanoidRootPart
-                local optimalHitbox = GetOptimalHitbox(tChar)
-                local predictedCFrame = GetAdvancedPredictedPosition(tChar, 0.22) or tHrp.CFrame
+                local optimalHitbox = tChar:FindFirstChild("Head") or tHrp
+                local predictedCFrame = tHrp.CFrame
 
                 if RageMode == "GUN" then
-                    -- TP a 2 studs detrás del enemigo + camera lock profesional + predicción
                     local behindCFrame = predictedCFrame * CFrame.new(0, 0, 2)
                     ApplyFakePosition(myRoot, behindCFrame)
                     Camera.CFrame = CFrame.lookAt(Camera.CFrame.Position, optimalHitbox.Position)
                 elseif RageMode == "MELE" then
-                    -- TP a 0 studs + predicción + siempre mirando hacia atrás
                     local backCFrame = predictedCFrame * CFrame.Angles(0, math.rad(180), 0)
                     ApplyFakePosition(myRoot, backCFrame)
                 elseif RageMode == "KNIFE" then
